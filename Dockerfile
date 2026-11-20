@@ -1,16 +1,13 @@
-FROM python:3.11-slim
+FROM node:26-bookworm-slim
 
+ENV DEBIAN_FRONTEND=noninteractive
 ENV NODE_OPTIONS="--max-old-space-size=350"
-ENV PATH="/usr/local/bin:${PATH}"
 ENV PORT=8080
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates git tar gzip ffmpeg \
-    && curl -fsSL "https://nodejs.org" -o /tmp/node.tgz \
-    && tar -xzf /tmp/node.tgz -C /usr/local --strip-components=1 \
-    && rm -f /tmp/node.tgz \
+    python3 python3-pip git ca-certificates ffmpeg \
     && npm install -g openclaw@latest \
-    && pip install --no-cache-dir flask requests auto-editor yt-dlp \
+    && pip3 install --no-cache-dir --break-system-packages flask requests auto-editor yt-dlp \
     && node -v && openclaw --version \
     && rm -rf /var/lib/apt/lists/*
 
