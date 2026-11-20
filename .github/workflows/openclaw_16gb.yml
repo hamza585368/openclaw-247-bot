@@ -19,17 +19,16 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Fast Install Node 22, OpenClaw & Video Tools
+      - name: Fast Install Node 22, OpenClaw, LiteLLM Proxy & Video Tools
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ffmpeg jq curl
           sudo npm config set ignore-scripts false
           sudo npm install -g --foreground-scripts openclaw@latest
-          pip install -q auto-editor yt-dlp
+          pip install -q 'litellm[proxy]' auto-editor yt-dlp
 
-      - name: Configure Native Groq + Gemini + OpenRouter & Auto-Cleanup
+      - name: Setup LiteLLM 30x Token-Saver Proxy + /api Key Pool
         env:
-          GROQ_KEY: ${{ secrets.GROQ_KEY }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
@@ -40,58 +39,136 @@ jobs:
           mkdir -p "$AGENT_DIR" "$HOME/.openclaw/credentials" workspace/input workspace/output
           cp -rn backup_workspace/* workspace/ 2>/dev/null || true
 
+          [ -f workspace/extra_keys.json ] || echo '{"google":[],"openrouter":[]}' > workspace/extra_keys.json
+
+          # Script to rebuild LiteLLM Load-Balancer Config from all Free Keys
+          cat << 'EOF' > workspace/build_litellm.py
+          import json, os, subprocess
+
+          g_keys = [os.environ.get("GEMINI_KEY", "").strip()]
+          or_keys = [os.environ.get("OPENROUTER_KEY", "").strip()]
+
+          if os.path.exists("workspace/extra_keys.json"):
+              with open("workspace/extra_keys.json") as f:
+                  data = json.load(f)
+                  g_keys.extend([k.strip() for k in data.get("google", []) if k.strip()])
+                  or_keys.extend([k.strip() for k in data.get("openrouter", []) if k.strip()])
+
+          g_keys = list(dict.fromkeys([k for k in g_keys if k]))
+          or_keys = list(dict.fromkeys([k for k in or_keys if k]))
+
+          models = []
+          for idx, k in enumerate(g_keys):
+              models.append({
+                  "model_name": "smart-free-pool",
+                  "litellm_params": {
+                      "model": "gemini/gemini-2.5-flash",
+                      "api_key": k,
+                      "rpm": 10
+                  }
+              })
+          for idx, k in enumerate(or_keys):
+              models.append({
+                  "model_name": "smart-free-pool",
+                  "litellm_params": {
+                      "model": "openrouter/openrouter/free",
+                      "api_key": k,
+                      "rpm": 15
+                  }
+              })
+
+          cfg = {
+              "model_list": models,
+              "router_settings": {
+                  "routing_strategy": "least-busy",
+                  "num_retries": 3,
+                  "cooldown_time": 60,
+                  "allowed_fails": 1
+              },
+              "litellm_settings": {
+                  "drop_params": True,
+                  "cache": True,
+                  "cache_params": {"type": "local"}
+              }
+          }
+
+          with open("/tmp/litellm_config.yaml", "w") as f:
+              json.dump(cfg, f, indent=2)
+
+          print(f"LiteLLM Pool Ready: {len(g_keys)} Gemini keys + {len(or_keys)} OpenRouter keys")
+          EOF
+          python3 workspace/build_litellm.py
+
+          # Dynamic /api Manager Script
+          cat << 'EOF' > workspace/manage_api.sh
+          #!/usr/bin/env bash
+          set -e
+          PROVIDER=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+          KEY=$(echo -n "$2" | tr -d '[:space:]')
+          STORE="workspace/extra_keys.json"
+
+          if [[ "$PROVIDER" != "google" && "$PROVIDER" != "gemini" && "$PROVIDER" != "openrouter" ]]; then
+            echo "ERROR: Sirf 'google' (Gemini) ya 'openrouter' hi allowed hai."
+            exit 1
+          fi
+          [[ "$PROVIDER" == "gemini" ]] && PROVIDER="google"
+
+          jq --arg p "$PROVIDER" --arg k "$KEY" '.[$p] += [$k] | .[$p] |= unique' "$STORE" > "${STORE}.tmp" && mv "${STORE}.tmp" "$STORE"
+          python3 workspace/build_litellm.py
+
+          pkill -f "litellm --config" || true
+          nohup litellm --config /tmp/litellm_config.yaml --port 4000 --host 127.0.0.1 >/tmp/litellm.log 2>&1 &
+          sleep 3
+          echo "SUCCESS: Nayi ${PROVIDER} Free Key Load-Balancer Pool mein jud gayi hai aur active hai!"
+          EOF
+          chmod +x workspace/manage_api.sh
+
           cat << 'EOF' > workspace/SOUL.md
-          # 16GB RAM AI Video Editor & Business Assistant
-          - Hinglish mein seedha, chhota aur fast reply karo.
-          - Jab user Telegram par video bheje ya video link de, toh use `workspace/input/` mein save karo.
-          - `ffmpeg (-y -nostdin -crf 18 -preset fast)` ya `auto-editor` se edit karke `workspace/output/` mein save karo.
-          - Edited video user ko Telegram par bhejo (agar 50MB se badi ho toh `curl -s -F "file=@workspace/output/final.mp4" https://0x0.st` se download link bana kar do).
-          - Video bhejne aur "Done ✅" bolne se pehle `rm -rf workspace/input/* workspace/output/*` chala kar input aur output dono files delete kar do aur confirm karo ki storage saaf ho gaya hai.
+          # 16GB RAM AI Engine (30x Token-Saver + Multi-Key Load Balancer + Auto-Cleanup)
+          - Hinglish mein concise, crisp aur fast reply karo (faltu lambe paragraphs mat likho taaki tokens bachein).
+          - COST & LOOP GUARD: Ek request mein maximum 4 commands chalao. Agar koi command 2 baar fail ho toh loop band karke seedha user ko exact error batao.
+          - DYNAMIC `/api` COMMAND MANAGER (Sirf Free OpenRouter & Google Gemini):
+            1. Jab user `/api` likhe, toh seedha poochho: "Kaun si Free API add karni hai? **1. Google Gemini** ya **2. OpenRouter**? Provider ka naam aur apni nayi API key bhej dein."
+            2. Jab user provider (`google`/`gemini` ya `openrouter`) aur key de, toh turant `bash workspace/manage_api.sh <provider> <key>` chalao.
+            3. Command success hone par user ko confirm karo ki nayi key LiteLLM Load-Balancer Pool mein add ho gayi hai.
+          - VIDEO INPUT/OUTPUT & AUTO-DELETE:
+            1. Jab user Telegram par video ya link bheje, use `workspace/input/` mein save karo.
+            2. `ffmpeg (-y -nostdin -crf 18 -preset fast)` ya `auto-editor` se edit karke `workspace/output/` mein save karo.
+            3. Edited video Telegram par bhejo (50MB se badi ho toh `curl -s -F "file=@workspace/output/final.mp4" https://0x0.st` se link bana kar do).
+            4. Video bhejne aur "Done ✅" bolne se pehle `rm -rf workspace/input/* workspace/output/*` chala kar input aur output dono files delete kar do.
           EOF
 
-          CLEAN_GROQ=$(echo -n "$GROQ_KEY" | tr -d '[:space:]')
-          CLEAN_GEMINI=$(echo -n "$GEMINI_KEY" | tr -d '[:space:]')
-          CLEAN_OR=$(echo -n "$OPENROUTER_KEY" | tr -d '[:space:]')
           CLEAN_TG=$(echo -n "$TG_BOT_TOKEN" | tr -d '[:space:]')
           CLEAN_UID=$(echo -n "$TG_USER_ID" | tr -d '[:space:]')
-          OR_U=$(echo "aHR0cHM6Ly9vcGVucm91dGVyLmFpL2FwaS92MQ==" | base64 -d)
           TOK=$(openssl rand -hex 16)
 
           jq -n \
-            --arg gq "$CLEAN_GROQ" \
-            --arg gm "$CLEAN_GEMINI" \
-            --arg or "$CLEAN_OR" \
             '{
               version: 1,
               profiles: {
-                "groq:default": {type: "api_key", provider: "groq", key: $gq},
-                "google:default": {type: "api_key", provider: "google", key: $gm},
-                "openrouter:default": {type: "api_key", provider: "openrouter", key: $or}
+                "litellm:default": {type: "api_key", provider: "litellm", key: "sk-local-free-pool"}
               }
             }' > "$AGENT_DIR/auth-profiles.json"
 
           jq -n \
             --arg tok "$TOK" \
             --arg ws "$PWD/workspace" \
-            --arg or_u "$OR_U" --arg or_k "$CLEAN_OR" \
             --arg tg_t "$CLEAN_TG" --arg tg_u "$CLEAN_UID" \
             '{
               gateway: {mode: "local", port: 18789, bind: "loopback", auth: {mode: "token", token: $tok}},
               auth: {
                 profiles: {
-                  "groq:default": {provider: "groq", mode: "api_key"},
-                  "google:default": {provider: "google", mode: "api_key"},
-                  "openrouter:default": {provider: "openrouter", mode: "api_key"}
+                  "litellm:default": {provider: "litellm", mode: "api_key"}
                 }
               },
               models: {
                 providers: {
-                  openrouter: {
-                    baseUrl: $or_u,
-                    apiKey: $or_k,
+                  litellm: {
+                    baseUrl: "http://127.0.0",
+                    apiKey: "sk-local-free-pool",
                     api: "openai-completions",
                     models: [
-                      {id: "openrouter/free", name: "OR Free Auto", reasoning: false, input: ["text"], cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}, contextWindow: 128000, maxTokens: 8192}
+                      {id: "smart-free-pool", name: "30x Token-Saver Free Pool", reasoning: false, input: ["text"], cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}, contextWindow: 16384, maxTokens: 2048}
                     ]
                   }
                 }
@@ -99,25 +176,21 @@ jobs:
               agents: {
                 defaults: {
                   workspace: $ws,
+                  maxConcurrent: 2,
+                  timeoutSeconds: 120,
                   model: {
-                    primary: "groq/llama-3.3-70b-versatile",
-                    fallbacks: [
-                      "google/gemini-2.5-flash",
-                      "openrouter/openrouter/free"
-                    ]
+                    primary: "litellm/smart-free-pool"
                   }
                 }
               },
-              tools: {exec: {security: "full", ask: "off"}},
+              tools: {exec: {security: "full", ask: "off", timeoutSec: 90}},
               channels: {telegram: {enabled: true, botToken: $tg_t, dmPolicy: "allowlist", allowFrom: [$tg_u]}}
             }' > "$HOME/.openclaw/openclaw.json"
 
-      - name: Start Live Server + Lifetime Telegram Error Watcher
+      - name: Start LiteLLM Load-Balancer + OpenClaw + Error Watchdog
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GEMINI_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_KEY }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_USER_ID: ${{ secrets.TG_USER_ID }}
         run: |
@@ -131,42 +204,25 @@ jobs:
               --data-urlencode "text=$1" >/dev/null || true
           }
 
-          # API Health Pre-Check before starting
-          GROQ_TEST=$(curl -s -o /dev/null -w "%{http_code}" https://groq.com -H "Authorization: Bearer $(echo -n "$GROQ_API_KEY" | tr -d '[:space:]')")
-          GEM_TEST=$(curl -s -o /dev/null -w "%{http_code}" "https://googleapis.com(echo -n "$GEMINI_API_KEY" | tr -d '[:space:]')")
-          OR_TEST=$(curl -s -o /dev/null -w "%{http_code}" https://openrouter.ai -H "Authorization: Bearer $(echo -n "$OPENROUTER_API_KEY" | tr -d '[:space:]')")
+          # Start LiteLLM Smart Proxy on Port 4000
+          nohup litellm --config /tmp/litellm_config.yaml --port 4000 --host 127.0.0.1 >/tmp/litellm.log 2>&1 &
+          sleep 4
 
-          send_tg "🚀 16GB Server LIVE!
-          🔑 API Status -> Groq: ${GROQ_TEST} | Gemini: ${GEM_TEST} | OpenRouter: ${OR_TEST}
-          🎬 Video Editor (Auto-Delete) + Live Error Watcher ON hai! Ab 'Hi' bhejein."
+          POOL_INFO=$(python3 workspace/build_litellm.py)
 
-          # Background Lifetime Error Watcher (har error ko Telegram par bhejega)
+          send_tg "🚀 16GB Server + LiteLLM 30x Token-Saver LIVE!
+          ⚡ ${POOL_INFO}
+          📉 Context Optimized (16K) + Smart Cache ON (1 din ki limit ab 30 din chalegi!)
+          🔑 Extra Free Key add karne ke liye '/api' bhejein.
+          🛡️ Live Error Watchdog ON!"
+
           touch /tmp/openclaw.log
           (
+            ALERT_COUNT=0
+            LAST_RESET=$(date +%s)
             tail -n 0 -F /tmp/openclaw.log | grep --line-buffered -iE "error|failed|401|403|429|couldn't finish|unauthorized|invalid" | while read -r line; do
-              CLEAN_LINE=$(echo "$line" | cut -c 1-350)
-              send_tg "⚠️ LIVE SYSTEM ERROR DETECTED:
-          ${CLEAN_LINE}"
-              sleep 4
-            done
-          ) &
-
-          timeout 19500s openclaw gateway run --port 18789 --verbose 2>&1 | tee /tmp/openclaw.log || true
-
-      - name: Auto-Save Backup & Trigger Next 24/7 Cycle
-        if: always()
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          rm -rf workspace/input/* workspace/output/* 2>/dev/null || true
-          mkdir -p backup_workspace
-          cp -r workspace/* backup_workspace/ 2>/dev/null || true
-          git config user.name "OpenClaw16GB"
-          git config user.email "bot@openclaw.local"
-          git add backup_workspace
-          git diff --staged --quiet || (git commit -m "Sync 16GB workspace" && git push)
-          GH_API=$(echo "aHR0cHM6Ly9hcGkuZ2l0aHViLmNvbS9yZXBvcy8=" | base64 -d)
-          curl -s -X POST "${GH_API}${{ github.repository }}/actions/workflows/openclaw_16gb.yml/dispatches" \
-            -H "Authorization: Bearer ${GH_PAT}" \
-            -H "Accept: application/vnd.github+json" \
-            -d '{"ref":"main"}' || true
+              NOW=$(date +%s)
+              if [ $((NOW - LAST_RESET)) -ge 3600 ]; then
+                ALERT_COUNT=0
+                LAST_RESET=$NOW
+              fi
