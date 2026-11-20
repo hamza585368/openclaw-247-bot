@@ -1,19 +1,7 @@
-FROM node:22-bookworm-slim
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV NODE_OPTIONS="--max-old-space-size=380"
+FROM python:3.11-slim
 ENV PORT=8080
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip git ca-certificates ffmpeg \
-    && npm config set ignore-scripts false \
-    && npm install -g --foreground-scripts openclaw@latest \
-    && pip3 install --no-cache-dir --break-system-packages flask requests \
-    && node -v && openclaw --version \
-    && rm -rf /var/lib/apt/lists/*
-
+RUN pip install --no-cache-dir flask requests
 WORKDIR /app
 COPY start_247.py /app/start_247.py
-
 EXPOSE 8080
 CMD ["python3", "/app/start_247.py"]
