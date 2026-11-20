@@ -1,4 +1,4 @@
-name: OpenClaw 16GB Engine
+name: OpenClaw Full Project Diagnostic
 
 on:
   push:
@@ -8,186 +8,23 @@ concurrency:
   group: openclaw-single-instance
   cancel-in-progress: true
 
-permissions:
-  contents: write
-
 jobs:
-  run-16gb-openclaw:
+  diagnose-everything:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 15
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Fast Install Node 22, OpenClaw, LiteLLM Proxy & Video Tools
+      - name: Install Tools
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y ffmpeg jq curl
+          sudo apt-get install -y jq curl
           sudo npm config set ignore-scripts false
           sudo npm install -g --foreground-scripts openclaw@latest
-          pip install -q 'litellm[proxy]' auto-editor yt-dlp
+          pip install -q 'litellm[proxy]'
 
-      - name: Setup LiteLLM 30x Token-Saver Proxy + /api Key Pool
-        env:
-          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
-          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
-          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-          TG_USER_ID: ${{ secrets.TG_USER_ID }}
-        run: |
-          AGENT_DIR="$HOME/.openclaw/agents/main/agent"
-          rm -rf "$HOME/.openclaw/agents/main/sessions" 2>/dev/null || true
-          mkdir -p "$AGENT_DIR" "$HOME/.openclaw/credentials" workspace/input workspace/output
-          cp -rn backup_workspace/* workspace/ 2>/dev/null || true
-
-          [ -f workspace/extra_keys.json ] || echo '{"google":[],"openrouter":[]}' > workspace/extra_keys.json
-
-          # Script to rebuild LiteLLM Load-Balancer Config from all Free Keys
-          cat << 'EOF' > workspace/build_litellm.py
-          import json, os, subprocess
-
-          g_keys = [os.environ.get("GEMINI_KEY", "").strip()]
-          or_keys = [os.environ.get("OPENROUTER_KEY", "").strip()]
-
-          if os.path.exists("workspace/extra_keys.json"):
-              with open("workspace/extra_keys.json") as f:
-                  data = json.load(f)
-                  g_keys.extend([k.strip() for k in data.get("google", []) if k.strip()])
-                  or_keys.extend([k.strip() for k in data.get("openrouter", []) if k.strip()])
-
-          g_keys = list(dict.fromkeys([k for k in g_keys if k]))
-          or_keys = list(dict.fromkeys([k for k in or_keys if k]))
-
-          models = []
-          for idx, k in enumerate(g_keys):
-              models.append({
-                  "model_name": "smart-free-pool",
-                  "litellm_params": {
-                      "model": "gemini/gemini-2.5-flash",
-                      "api_key": k,
-                      "rpm": 10
-                  }
-              })
-          for idx, k in enumerate(or_keys):
-              models.append({
-                  "model_name": "smart-free-pool",
-                  "litellm_params": {
-                      "model": "openrouter/openrouter/free",
-                      "api_key": k,
-                      "rpm": 15
-                  }
-              })
-
-          cfg = {
-              "model_list": models,
-              "router_settings": {
-                  "routing_strategy": "least-busy",
-                  "num_retries": 3,
-                  "cooldown_time": 60,
-                  "allowed_fails": 1
-              },
-              "litellm_settings": {
-                  "drop_params": True,
-                  "cache": True,
-                  "cache_params": {"type": "local"}
-              }
-          }
-
-          with open("/tmp/litellm_config.yaml", "w") as f:
-              json.dump(cfg, f, indent=2)
-
-          print(f"LiteLLM Pool Ready: {len(g_keys)} Gemini keys + {len(or_keys)} OpenRouter keys")
-          EOF
-          python3 workspace/build_litellm.py
-
-          # Dynamic /api Manager Script
-          cat << 'EOF' > workspace/manage_api.sh
-          #!/usr/bin/env bash
-          set -e
-          PROVIDER=$(echo "$1" | tr '[:upper:]' '[:lower:]')
-          KEY=$(echo -n "$2" | tr -d '[:space:]')
-          STORE="workspace/extra_keys.json"
-
-          if [[ "$PROVIDER" != "google" && "$PROVIDER" != "gemini" && "$PROVIDER" != "openrouter" ]]; then
-            echo "ERROR: Sirf 'google' (Gemini) ya 'openrouter' hi allowed hai."
-            exit 1
-          fi
-          [[ "$PROVIDER" == "gemini" ]] && PROVIDER="google"
-
-          jq --arg p "$PROVIDER" --arg k "$KEY" '.[$p] += [$k] | .[$p] |= unique' "$STORE" > "${STORE}.tmp" && mv "${STORE}.tmp" "$STORE"
-          python3 workspace/build_litellm.py
-
-          pkill -f "litellm --config" || true
-          nohup litellm --config /tmp/litellm_config.yaml --port 4000 --host 127.0.0.1 >/tmp/litellm.log 2>&1 &
-          sleep 3
-          echo "SUCCESS: Nayi ${PROVIDER} Free Key Load-Balancer Pool mein jud gayi hai aur active hai!"
-          EOF
-          chmod +x workspace/manage_api.sh
-
-          cat << 'EOF' > workspace/SOUL.md
-          # 16GB RAM AI Engine (30x Token-Saver + Multi-Key Load Balancer + Auto-Cleanup)
-          - Hinglish mein concise, crisp aur fast reply karo (faltu lambe paragraphs mat likho taaki tokens bachein).
-          - COST & LOOP GUARD: Ek request mein maximum 4 commands chalao. Agar koi command 2 baar fail ho toh loop band karke seedha user ko exact error batao.
-          - DYNAMIC `/api` COMMAND MANAGER (Sirf Free OpenRouter & Google Gemini):
-            1. Jab user `/api` likhe, toh seedha poochho: "Kaun si Free API add karni hai? **1. Google Gemini** ya **2. OpenRouter**? Provider ka naam aur apni nayi API key bhej dein."
-            2. Jab user provider (`google`/`gemini` ya `openrouter`) aur key de, toh turant `bash workspace/manage_api.sh <provider> <key>` chalao.
-            3. Command success hone par user ko confirm karo ki nayi key LiteLLM Load-Balancer Pool mein add ho gayi hai.
-          - VIDEO INPUT/OUTPUT & AUTO-DELETE:
-            1. Jab user Telegram par video ya link bheje, use `workspace/input/` mein save karo.
-            2. `ffmpeg (-y -nostdin -crf 18 -preset fast)` ya `auto-editor` se edit karke `workspace/output/` mein save karo.
-            3. Edited video Telegram par bhejo (50MB se badi ho toh `curl -s -F "file=@workspace/output/final.mp4" https://0x0.st` se link bana kar do).
-            4. Video bhejne aur "Done ✅" bolne se pehle `rm -rf workspace/input/* workspace/output/*` chala kar input aur output dono files delete kar do.
-          EOF
-
-          CLEAN_TG=$(echo -n "$TG_BOT_TOKEN" | tr -d '[:space:]')
-          CLEAN_UID=$(echo -n "$TG_USER_ID" | tr -d '[:space:]')
-          TOK=$(openssl rand -hex 16)
-
-          jq -n \
-            '{
-              version: 1,
-              profiles: {
-                "litellm:default": {type: "api_key", provider: "litellm", key: "sk-local-free-pool"}
-              }
-            }' > "$AGENT_DIR/auth-profiles.json"
-
-          jq -n \
-            --arg tok "$TOK" \
-            --arg ws "$PWD/workspace" \
-            --arg tg_t "$CLEAN_TG" --arg tg_u "$CLEAN_UID" \
-            '{
-              gateway: {mode: "local", port: 18789, bind: "loopback", auth: {mode: "token", token: $tok}},
-              auth: {
-                profiles: {
-                  "litellm:default": {provider: "litellm", mode: "api_key"}
-                }
-              },
-              models: {
-                providers: {
-                  litellm: {
-                    baseUrl: "http://127.0.0",
-                    apiKey: "sk-local-free-pool",
-                    api: "openai-completions",
-                    models: [
-                      {id: "smart-free-pool", name: "30x Token-Saver Free Pool", reasoning: false, input: ["text"], cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}, contextWindow: 16384, maxTokens: 2048}
-                    ]
-                  }
-                }
-              },
-              agents: {
-                defaults: {
-                  workspace: $ws,
-                  maxConcurrent: 2,
-                  timeoutSeconds: 120,
-                  model: {
-                    primary: "litellm/smart-free-pool"
-                  }
-                }
-              },
-              tools: {exec: {security: "full", ask: "off", timeoutSec: 90}},
-              channels: {telegram: {enabled: true, botToken: $tg_t, dmPolicy: "allowlist", allowFrom: [$tg_u]}}
-            }' > "$HOME/.openclaw/openclaw.json"
-
-      - name: Start LiteLLM Load-Balancer + OpenClaw + Error Watchdog
+      - name: Run Full X-Ray & Send Complete Report to Telegram
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
@@ -204,25 +41,53 @@ jobs:
               --data-urlencode "text=$1" >/dev/null || true
           }
 
-          # Start LiteLLM Smart Proxy on Port 4000
-          nohup litellm --config /tmp/litellm_config.yaml --port 4000 --host 127.0.0.1 >/tmp/litellm.log 2>&1 &
-          sleep 4
+          # 1. Check Repo Files & Versions
+          OC_VER=$(openclaw --version 2>&1 || echo "NO_OPENCLAW")
+          LITE_VER=$(litellm --version 2>&1 || echo "NO_LITELLM")
+          REPO_FILES=$(ls -la && ls -la backup_workspace 2>/dev/null || echo "no backup_workspace")
 
-          POOL_INFO=$(python3 workspace/build_litellm.py)
+          # 2. Check API Keys
+          GEM_CODE=$(curl -s -o /tmp/gem.json -w "%{http_code}" "https://googleapis.com(echo -n "$GEMINI_KEY" | tr -d '[:space:]')")
+          OR_CODE=$(curl -s -o /tmp/or.json -w "%{http_code}" https://openrouter.ai -H "Authorization: Bearer $(echo -n "$OPENROUTER_KEY" | tr -d '[:space:]')")
 
-          send_tg "🚀 16GB Server + LiteLLM 30x Token-Saver LIVE!
-          ⚡ ${POOL_INFO}
-          📉 Context Optimized (16K) + Smart Cache ON (1 din ki limit ab 30 din chalegi!)
-          🔑 Extra Free Key add karne ke liye '/api' bhejein.
-          🛡️ Live Error Watchdog ON!"
+          # 3. Test LiteLLM Proxy Startup
+          python3 workspace/build_litellm.py > /tmp/build_out.txt 2>&1 || true
+          nohup litellm --config /tmp/litellm_config.yaml --port 4000 --host 127.0.0.1 >/tmp/litellm_diag.log 2>&1 &
+          sleep 5
+          LITE_HEALTH=$(curl -s -o /tmp/lite_test.json -w "%{http_code}" http://127.0.0 -H "Authorization: Bearer sk-local-free-pool" || echo "DOWN")
+          LITE_LOG=$(tail -n 20 /tmp/litellm_diag.log 2>/dev/null || echo "no litellm log")
 
-          touch /tmp/openclaw.log
-          (
-            ALERT_COUNT=0
-            LAST_RESET=$(date +%s)
-            tail -n 0 -F /tmp/openclaw.log | grep --line-buffered -iE "error|failed|401|403|429|couldn't finish|unauthorized|invalid" | while read -r line; do
-              NOW=$(date +%s)
-              if [ $((NOW - LAST_RESET)) -ge 3600 ]; then
-                ALERT_COUNT=0
-                LAST_RESET=$NOW
-              fi
+          # 4. Recreate OpenClaw Config & Run Doctor + Gateway Capture
+          AGENT_DIR="$HOME/.openclaw/agents/main/agent"
+          mkdir -p "$AGENT_DIR" workspace
+          TOK=$(openssl rand -hex 16)
+          jq -n '{version:1,profiles:{"litellm:default":{type:"api_key",provider:"litellm",key:"sk-local-free-pool"}}}' > "$AGENT_DIR/auth-profiles.json"
+          jq -n --arg tok "$TOK" --arg ws "$PWD/workspace" --arg tg_t "$CLEAN_TG" --arg tg_u "$CLEAN_UID" \
+            '{
+              gateway:{mode:"local",port:18789,bind:"loopback",auth:{mode:"token",token:$tok}},
+              auth:{profiles:{"litellm:default":{provider:"litellm",mode:"api_key"}}},
+              models:{providers:{litellm:{baseUrl:"http://127.0.0",apiKey:"sk-local-free-pool",api:"openai-completions",models:[{id:"smart-free-pool",name:"Pool",reasoning:false,input:["text"],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:16384,maxTokens:2048}]}}},
+              agents:{defaults:{workspace:$ws,model:{primary:"litellm/smart-free-pool"}}},
+              channels:{telegram:{enabled:true,botToken:$tg_t,dmPolicy:"allowlist",allowFrom:[$tg_u]}}
+            }' > "$HOME/.openclaw/openclaw.json"
+
+          DOC_OUT=$(openclaw doctor 2>&1 | tail -n 25 || true)
+          timeout 12s openclaw gateway run --port 18789 --verbose > /tmp/gw_diag.log 2>&1 || true
+          GW_OUT=$(cat /tmp/gw_diag.log | tail -n 30)
+
+          # Send Part 1 to Telegram
+          send_tg "🔍 X-RAY REPORT PART 1/2:
+          📦 OpenClaw: ${OC_VER}
+          🔑 Gemini HTTP: ${GEM_CODE} | OpenRouter HTTP: ${OR_CODE}
+          ⚡ LiteLLM Health: ${LITE_HEALTH}
+          📄 Build Out: $(cat /tmp/build_out.txt | head -c 300)
+          📁 Files: $(ls -m)"
+
+          sleep 2
+
+          # Send Part 2 (Exact Gateway & Doctor Logs) to Telegram
+          send_tg "🔍 X-RAY REPORT PART 2/2 (EXACT LOGS):
+          --- GATEWAY OUTPUT ---
+          $(echo "$GW_OUT" | tail -c 1500)
+          --- LITELLM LOG ---
+          $(echo "$LITE_LOG" | tail -c 800)"
