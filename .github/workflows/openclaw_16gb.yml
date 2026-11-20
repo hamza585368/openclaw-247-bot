@@ -34,7 +34,7 @@ jobs:
           npm install -g --foreground-scripts openclaw@latest
           pip install -q auto-editor openai-whisper yt-dlp moviepy opencv-python-headless rembg onnxruntime scenedetect
 
-      - name: Configure OpenClaw & Secrets
+      - name: Configure OpenClaw (Zero Indentation Bug)
         env:
           GROQ_KEY: ${{ secrets.GROQ_KEY }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
@@ -44,15 +44,8 @@ jobs:
         run: |
           mkdir -p ~/.openclaw workspace/input workspace/output
           cp -rn backup_workspace/* workspace/ 2>/dev/null || true
-
-          cat << 'EOF' > workspace/SOUL.md
-          # 16GB RAM GitHub Cloud AI Video Editor
-          Tum GitHub ke 16GB RAM + 4-Core Linux server par LIVE ho!
-          - Tools: `ffmpeg -y -nostdin`, `auto-editor`, `whisper`, `yt-dlp`, `rembg`, `scenedetect`.
-          - Rules: High quality (`-crf 18`) video edit karo aur hamesha Hinglish mein baat karo.
-          EOF
-
-          python3 - << 'PYEOF'
+          printf "# 16GB RAM GitHub Cloud AI Video Editor\nTum 16GB RAM + 4-Core Linux server par LIVE ho! Tools: ffmpeg (-y -nostdin), auto-editor, whisper, yt-dlp, rembg, scenedetect. High quality (-crf 18) video edit karo aur Hinglish mein reply karo.\n" > workspace/SOUL.md
+          python3 -c '
           import os, json, secrets, base64
           b64 = lambda s: base64.b64decode(s).decode()
           cfg = {
@@ -75,9 +68,8 @@ jobs:
             "tools": {"exec": {"security": "full", "ask": "off"}},
             "channels": {"telegram": {"enabled": True, "botToken": os.environ["TG_BOT_TOKEN"], "dmPolicy": "allowlist", "allowFrom": [str(os.environ["TG_USER_ID"])]}}
           }
-          with open(os.path.expanduser("~/.openclaw/openclaw.json"), "w") as f:
-              json.dump(cfg, f, indent=2)
-          PYEOF
+          open(os.path.expanduser("~/.openclaw/openclaw.json"), "w").write(json.dumps(cfg, indent=2))
+          '
 
       - name: Start OpenClaw 16GB Live Server
         env:
