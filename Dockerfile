@@ -6,7 +6,8 @@ ENV PORT=8080
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip git ca-certificates ffmpeg \
-    && npm install -g openclaw@latest \
+    && npm config set ignore-scripts false \
+    && npm install -g --foreground-scripts openclaw@latest \
     && pip3 install --no-cache-dir --break-system-packages flask requests auto-editor yt-dlp \
     && node -v && openclaw --version \
     && rm -rf /var/lib/apt/lists/*
