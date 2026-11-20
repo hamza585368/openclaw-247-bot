@@ -32,7 +32,7 @@ jobs:
           sudo npm install -g --foreground-scripts openclaw@latest
           pip install -q auto-editor openai-whisper yt-dlp moviepy opencv-python-headless rembg onnxruntime scenedetect
 
-      - name: Register Official OpenClaw Auth Profiles & Config
+      - name: Configure Gemini 2.5 Flash Primary + Fallbacks
         env:
           GROQ_KEY: ${{ secrets.GROQ_KEY }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
@@ -53,7 +53,7 @@ jobs:
           CLEAN_UID=$(echo -n "$TG_USER_ID" | tr -d '[:space:]')
           TOK=$(openssl rand -hex 16)
 
-          # 1. Official OpenClaw Auth Store (Yehi file sign-in error khatam karti hai!)
+          # Official OpenClaw Credential Store
           jq -n \
             --arg gq "$CLEAN_GROQ" \
             --arg gm "$CLEAN_GEMINI" \
@@ -61,14 +61,14 @@ jobs:
             '{
               version: 1,
               profiles: {
-                "groq:default": {type: "api_key", provider: "groq", key: $gq},
                 "google:default": {type: "api_key", provider: "google", key: $gm},
+                "groq:default": {type: "api_key", provider: "groq", key: $gq},
                 "openrouter:default": {type: "api_key", provider: "openrouter", key: $or}
               }
             }' > "$AGENT_DIR/auth-profiles.json"
           chmod 600 "$AGENT_DIR/auth-profiles.json"
 
-          # 2. Clean OpenClaw Config Using Built-In Authenticated Providers
+          # Gemini 2.5 Flash Primary (Best for OpenClaw Tool-Calling) + Groq/OpenRouter Fallbacks
           jq -n \
             --arg tok "$TOK" \
             --arg ws "$PWD/workspace" \
@@ -78,8 +78,8 @@ jobs:
               gateway: {mode: "local", port: 18789, bind: "loopback", auth: {mode: "token", token: $tok}},
               auth: {
                 profiles: {
-                  "groq:default": {provider: "groq", mode: "api_key"},
                   "google:default": {provider: "google", mode: "api_key"},
+                  "groq:default": {provider: "groq", mode: "api_key"},
                   "openrouter:default": {provider: "openrouter", mode: "api_key"}
                 }
               },
@@ -87,9 +87,9 @@ jobs:
                 defaults: {
                   workspace: $ws,
                   model: {
-                    primary: "groq/llama-3.3-70b-versatile",
+                    primary: "google/gemini-2.5-flash",
                     fallbacks: [
-                      "google/gemini-2.5-flash",
+                      "groq/llama-3.3-70b-versatile",
                       "groq/llama-3.1-8b-instant",
                       "openrouter/openrouter/free"
                     ]
@@ -100,10 +100,9 @@ jobs:
               channels: {telegram: {enabled: true, botToken: $tg_t, dmPolicy: "allowlist", allowFrom: [$tg_u]}}
             }' > "$HOME/.openclaw/openclaw.json"
 
-          # Verify Auth Status in Logs
           openclaw models status || true
 
-      - name: Start OpenClaw 16GB Live Server
+      - name: Start OpenClaw 16GB Live Server + Error Watchdog
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_KEY }}
@@ -117,10 +116,22 @@ jobs:
           export GEMINI_API_KEY=$(echo -n "$GEMINI_API_KEY" | tr -d '[:space:]')
           export GOOGLE_API_KEY="$GEMINI_API_KEY"
           export OPENROUTER_API_KEY=$(echo -n "$OPENROUTER_API_KEY" | tr -d '[:space:]')
-
           TG_API=$(echo "aHR0cHM6Ly9hcGkudGVsZWdyYW0ub3JnL2JvdA==" | base64 -d)
-          curl -s -X POST "${TG_API}${TG_BOT_TOKEN}/sendMessage" -d "chat_id=${TG_USER_ID}" -d "text=✅ Auth Profiles FIXED! Ab '/new' aur phir 'Hi' bhejein!" >/dev/null || true
-          timeout 19500s openclaw gateway run --port 18789 --verbose || true
+
+          # Background Error Reporter (Agar kabhi fail ho toh exact reason Telegram par bhejega)
+          (
+            sleep 15
+            tail -n 0 -F /tmp/openclaw_live.log 2>/dev/null | while read -r line; do
+              if echo "$line" | grep -qiE "error|failed|400|401|403|404|429|quota|invalid"; then
+                CLEAN_ERR=$(echo "$line" | head -c 350)
+                curl -s -X POST "${TG_API}${TG_BOT_TOKEN}/sendMessage" -d "chat_id=${TG_USER_ID}" --data-urlencode "text=🔍 Log Alert: $CLEAN_ERR" >/dev/null || true
+                sleep 10
+              fi
+            done
+          ) &
+
+          curl -s -X POST "${TG_API}${TG_BOT_TOKEN}/sendMessage" -d "chat_id=${TG_USER_ID}" -d "text=🚀 Gemini 2.5 Flash + 16GB Server LIVE! Ab '/new' aur phir 'Hi' bhejein!" >/dev/null || true
+          timeout 19500s openclaw gateway run --port 18789 --verbose 2>&1 | tee /tmp/openclaw_live.log || true
 
       - name: Auto-Save Workspace Backup
         if: always()
