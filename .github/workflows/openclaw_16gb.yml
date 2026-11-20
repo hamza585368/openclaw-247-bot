@@ -1,6 +1,9 @@
 name: OpenClaw 16GB Engine
 
 on:
+  push:
+    paths:
+      - '.github/workflows/openclaw_16gb.yml'
   workflow_dispatch:
 
 concurrency:
@@ -15,15 +18,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
-      - name: Checkout Repo & Backup
+      - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Setup Node 26 LTS
+      - name: Setup Node 22 LTS
         uses: actions/setup-node@v4
         with:
-          node-version: '26'
+          node-version: '22'
 
-      - name: Install OpenClaw & Heavy Video Editing Tools (16GB RAM)
+      - name: Install OpenClaw & 16GB Video Tools
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ffmpeg sox libsox-fmt-all
@@ -31,7 +34,7 @@ jobs:
           npm install -g --foreground-scripts openclaw@latest
           pip install -q auto-editor openai-whisper yt-dlp moviepy opencv-python-headless rembg onnxruntime scenedetect
 
-      - name: Restore Workspace & Configure OpenClaw
+      - name: Configure OpenClaw & Secrets
         env:
           GROQ_KEY: ${{ secrets.GROQ_KEY }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
@@ -44,10 +47,9 @@ jobs:
 
           cat << 'EOF' > workspace/SOUL.md
           # 16GB RAM GitHub Cloud AI Video Editor
-          Tum GitHub ke 16GB RAM + 4-Core Linux server par chal rahe ho!
-          - Input/Output Folder: `workspace/`
+          Tum GitHub ke 16GB RAM + 4-Core Linux server par LIVE ho!
           - Tools: `ffmpeg -y -nostdin`, `auto-editor`, `whisper`, `yt-dlp`, `rembg`, `scenedetect`.
-          - Rules: High quality (`-crf 18`) video edit karo, Hinglish mein baat karo, aur kaam ke baad Telegram par report do.
+          - Rules: High quality (`-crf 18`) video edit karo aur hamesha Hinglish mein baat karo.
           EOF
 
           python3 - << 'PYEOF'
@@ -77,7 +79,7 @@ jobs:
               json.dump(cfg, f, indent=2)
           PYEOF
 
-      - name: Run OpenClaw Gateway (5.5 Hours Cycle + Auto-Backup)
+      - name: Start OpenClaw 16GB Live Server
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_KEY }}
@@ -86,7 +88,7 @@ jobs:
           openclaw doctor --fix <<< $'y\ny\n' || true
           timeout 19500s openclaw gateway run --port 18789 --verbose || true
 
-      - name: Save Backup Back to GitHub
+      - name: Auto-Save Workspace Backup
         if: always()
         run: |
           mkdir -p backup_workspace
@@ -95,4 +97,3 @@ jobs:
           git config user.email "bot@openclaw.local"
           git add backup_workspace
           git diff --staged --quiet || (git commit -m "Sync 16GB workspace" && git push)
-          
