@@ -19,7 +19,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Fast Install Node 22 & OpenClaw (45 Seconds)
+      - name: Fast Install Node 22, OpenClaw & Video Tools
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ffmpeg jq curl
@@ -27,7 +27,7 @@ jobs:
           sudo npm install -g --foreground-scripts openclaw@latest
           pip install -q auto-editor yt-dlp
 
-      - name: Configure Working OpenRouter + Native Groq Auth
+      - name: Configure Native Groq + Gemini + OpenRouter & Auto-Cleanup
         env:
           GROQ_KEY: ${{ secrets.GROQ_KEY }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
@@ -36,9 +36,18 @@ jobs:
           TG_USER_ID: ${{ secrets.TG_USER_ID }}
         run: |
           AGENT_DIR="$HOME/.openclaw/agents/main/agent"
+          rm -rf "$HOME/.openclaw/agents/main/sessions" 2>/dev/null || true
           mkdir -p "$AGENT_DIR" "$HOME/.openclaw/credentials" workspace/input workspace/output
           cp -rn backup_workspace/* workspace/ 2>/dev/null || true
-          echo "# 16GB RAM Cloud AI Assistant - Hinglish mein seedha aur fast reply karo." > workspace/SOUL.md
+
+          cat << 'EOF' > workspace/SOUL.md
+          # 16GB RAM AI Video Editor & Business Assistant
+          - Hinglish mein seedha, chhota aur fast reply karo.
+          - Jab user Telegram par video bheje ya video link de, toh use `workspace/input/` mein save karo.
+          - `ffmpeg (-y -nostdin -crf 18 -preset fast)` ya `auto-editor` se edit karke `workspace/output/` mein save karo.
+          - Edited video user ko Telegram par bhejo (agar 50MB se badi ho toh `curl -s -F "file=@workspace/output/final.mp4" https://0x0.st` se download link bana kar do).
+          - Video bhejne aur "Done ✅" bolne se pehle `rm -rf workspace/input/* workspace/output/*` chala kar input aur output dono files delete kar do aur confirm karo ki storage saaf ho gaya hai.
+          EOF
 
           CLEAN_GROQ=$(echo -n "$GROQ_KEY" | tr -d '[:space:]')
           CLEAN_GEMINI=$(echo -n "$GEMINI_KEY" | tr -d '[:space:]')
@@ -55,9 +64,9 @@ jobs:
             '{
               version: 1,
               profiles: {
-                "openrouter:default": {type: "api_key", provider: "openrouter", key: $or},
                 "groq:default": {type: "api_key", provider: "groq", key: $gq},
-                "google:default": {type: "api_key", provider: "google", key: $gm}
+                "google:default": {type: "api_key", provider: "google", key: $gm},
+                "openrouter:default": {type: "api_key", provider: "openrouter", key: $or}
               }
             }' > "$AGENT_DIR/auth-profiles.json"
 
@@ -70,9 +79,9 @@ jobs:
               gateway: {mode: "local", port: 18789, bind: "loopback", auth: {mode: "token", token: $tok}},
               auth: {
                 profiles: {
-                  "openrouter:default": {provider: "openrouter", mode: "api_key"},
                   "groq:default": {provider: "groq", mode: "api_key"},
-                  "google:default": {provider: "google", mode: "api_key"}
+                  "google:default": {provider: "google", mode: "api_key"},
+                  "openrouter:default": {provider: "openrouter", mode: "api_key"}
                 }
               },
               models: {
@@ -82,8 +91,7 @@ jobs:
                     apiKey: $or_k,
                     api: "openai-completions",
                     models: [
-                      {id: "openrouter/free", name: "OR Free Auto", reasoning: false, input: ["text"], cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}, contextWindow: 128000, maxTokens: 8192},
-                      {id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B Free", reasoning: false, input: ["text"], cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}, contextWindow: 128000, maxTokens: 8192}
+                      {id: "openrouter/free", name: "OR Free Auto", reasoning: false, input: ["text"], cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}, contextWindow: 128000, maxTokens: 8192}
                     ]
                   }
                 }
@@ -92,11 +100,10 @@ jobs:
                 defaults: {
                   workspace: $ws,
                   model: {
-                    primary: "openrouter/openrouter/free",
+                    primary: "groq/llama-3.3-70b-versatile",
                     fallbacks: [
-                      "groq/llama-3.3-70b-versatile",
-                      "openrouter/meta-llama/llama-3.3-70b-instruct:free",
-                      "google/gemini-2.5-flash"
+                      "google/gemini-2.5-flash",
+                      "openrouter/openrouter/free"
                     ]
                   }
                 }
@@ -105,23 +112,53 @@ jobs:
               channels: {telegram: {enabled: true, botToken: $tg_t, dmPolicy: "allowlist", allowFrom: [$tg_u]}}
             }' > "$HOME/.openclaw/openclaw.json"
 
-      - name: Start OpenClaw 16GB Live Server
+      - name: Start Live Server + Lifetime Telegram Error Watcher
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GEMINI_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_USER_ID: ${{ secrets.TG_USER_ID }}
         run: |
+          CLEAN_TG=$(echo -n "$TG_BOT_TOKEN" | tr -d '[:space:]')
+          CLEAN_UID=$(echo -n "$TG_USER_ID" | tr -d '[:space:]')
           TG_API=$(echo "aHR0cHM6Ly9hcGkudGVsZWdyYW0ub3JnL2JvdA==" | base64 -d)
-          curl -s -X POST "${TG_API}${TG_BOT_TOKEN}/sendMessage" -d "chat_id=${TG_USER_ID}" -d "text=⚡ 45-Sec Fast Server LIVE! Ab '/new' aur 'Hi' bhejein!" >/dev/null || true
-          timeout 19500s openclaw gateway run --port 18789 --verbose || true
+
+          send_tg() {
+            curl -s -X POST "${TG_API}${CLEAN_TG}/sendMessage" \
+              --data-urlencode "chat_id=${CLEAN_UID}" \
+              --data-urlencode "text=$1" >/dev/null || true
+          }
+
+          # API Health Pre-Check before starting
+          GROQ_TEST=$(curl -s -o /dev/null -w "%{http_code}" https://groq.com -H "Authorization: Bearer $(echo -n "$GROQ_API_KEY" | tr -d '[:space:]')")
+          GEM_TEST=$(curl -s -o /dev/null -w "%{http_code}" "https://googleapis.com(echo -n "$GEMINI_API_KEY" | tr -d '[:space:]')")
+          OR_TEST=$(curl -s -o /dev/null -w "%{http_code}" https://openrouter.ai -H "Authorization: Bearer $(echo -n "$OPENROUTER_API_KEY" | tr -d '[:space:]')")
+
+          send_tg "🚀 16GB Server LIVE!
+          🔑 API Status -> Groq: ${GROQ_TEST} | Gemini: ${GEM_TEST} | OpenRouter: ${OR_TEST}
+          🎬 Video Editor (Auto-Delete) + Live Error Watcher ON hai! Ab 'Hi' bhejein."
+
+          # Background Lifetime Error Watcher (har error ko Telegram par bhejega)
+          touch /tmp/openclaw.log
+          (
+            tail -n 0 -F /tmp/openclaw.log | grep --line-buffered -iE "error|failed|401|403|429|couldn't finish|unauthorized|invalid" | while read -r line; do
+              CLEAN_LINE=$(echo "$line" | cut -c 1-350)
+              send_tg "⚠️ LIVE SYSTEM ERROR DETECTED:
+          ${CLEAN_LINE}"
+              sleep 4
+            done
+          ) &
+
+          timeout 19500s openclaw gateway run --port 18789 --verbose 2>&1 | tee /tmp/openclaw.log || true
 
       - name: Auto-Save Backup & Trigger Next 24/7 Cycle
         if: always()
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
+          rm -rf workspace/input/* workspace/output/* 2>/dev/null || true
           mkdir -p backup_workspace
           cp -r workspace/* backup_workspace/ 2>/dev/null || true
           git config user.name "OpenClaw16GB"
