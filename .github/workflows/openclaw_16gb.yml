@@ -1,0 +1,98 @@
+name: OpenClaw 16GB Engine
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: openclaw-single-instance
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run-16gb-openclaw:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout Repo & Backup
+        uses: actions/checkout@v4
+
+      - name: Setup Node 26 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+
+      - name: Install OpenClaw & Heavy Video Editing Tools (16GB RAM)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg sox libsox-fmt-all
+          npm config set ignore-scripts false
+          npm install -g --foreground-scripts openclaw@latest
+          pip install -q auto-editor openai-whisper yt-dlp moviepy opencv-python-headless rembg onnxruntime scenedetect
+
+      - name: Restore Workspace & Configure OpenClaw
+        env:
+          GROQ_KEY: ${{ secrets.GROQ_KEY }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID }}
+        run: |
+          mkdir -p ~/.openclaw workspace/input workspace/output
+          cp -rn backup_workspace/* workspace/ 2>/dev/null || true
+
+          cat << 'EOF' > workspace/SOUL.md
+          # 16GB RAM GitHub Cloud AI Video Editor
+          Tum GitHub ke 16GB RAM + 4-Core Linux server par chal rahe ho!
+          - Input/Output Folder: `workspace/`
+          - Tools: `ffmpeg -y -nostdin`, `auto-editor`, `whisper`, `yt-dlp`, `rembg`, `scenedetect`.
+          - Rules: High quality (`-crf 18`) video edit karo, Hinglish mein baat karo, aur kaam ke baad Telegram par report do.
+          EOF
+
+          python3 - << 'PYEOF'
+          import os, json, secrets, base64
+          b64 = lambda s: base64.b64decode(s).decode()
+          cfg = {
+            "gateway": {"mode": "local", "port": 18789, "bind": "loopback", "auth": {"mode": "token", "token": secrets.token_hex(16)}},
+            "models": {"providers": {
+              "groq_fast": {"baseUrl": b64("aHR0cHM6Ly9hcGkuZ3JvcS5jb20vb3BlbmFpL3Yx"), "apiKey": os.environ["GROQ_KEY"], "api": "openai-completions", "models": [
+                {"id": "llama-3.3-70b-versatile", "name": "Groq 70B", "reasoning": False, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 8192}
+              ]},
+              "gemini_direct": {"baseUrl": b64("aHR0cHM6Ly9nZW5lcmF0aXZlbGFuZ3VhZ2UuZ29vZ2xlYXBpcy5jb20vdjFiZXRhL29wZW5haS8="), "apiKey": os.environ["GEMINI_KEY"], "api": "openai-completions", "models": [
+                {"id": "gemini-2.5-flash", "name": "Gemini Flash", "reasoning": False, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 1000000, "maxTokens": 8192}
+              ]},
+              "openrouter": {"baseUrl": b64("aHR0cHM6Ly9vcGVucm91dGVyLmFpL2FwaS92MQ=="), "apiKey": os.environ["OPENROUTER_KEY"], "api": "openai-completions", "models": [
+                {"id": "openrouter/free", "name": "OR Free", "reasoning": False, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 8192}
+              ]}
+            }},
+            "agents": {"defaults": {"workspace": os.path.abspath("workspace"), "model": {
+              "primary": "groq_fast/llama-3.3-70b-versatile",
+              "fallbacks": ["gemini_direct/gemini-2.5-flash", "openrouter/openrouter/free"]
+            }}},
+            "tools": {"exec": {"security": "full", "ask": "off"}},
+            "channels": {"telegram": {"enabled": True, "botToken": os.environ["TG_BOT_TOKEN"], "dmPolicy": "allowlist", "allowFrom": [str(os.environ["TG_USER_ID"])]}}
+          }
+          with open(os.path.expanduser("~/.openclaw/openclaw.json"), "w") as f:
+              json.dump(cfg, f, indent=2)
+          PYEOF
+
+      - name: Run OpenClaw Gateway (5.5 Hours Cycle + Auto-Backup)
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_KEY }}
+        run: |
+          openclaw doctor --fix <<< $'y\ny\n' || true
+          timeout 19500s openclaw gateway run --port 18789 --verbose || true
+
+      - name: Save Backup Back to GitHub
+        if: always()
+        run: |
+          mkdir -p backup_workspace
+          cp -r workspace/* backup_workspace/ 2>/dev/null || true
+          git config user.name "OpenClaw16GB"
+          git config user.email "bot@openclaw.local"
+          git add backup_workspace
+          git diff --staged --quiet || (git commit -m "Sync 16GB workspace" && git push)
+          
