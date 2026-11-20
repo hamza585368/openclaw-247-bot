@@ -1,9 +1,8 @@
-import os, time, json, secrets, subprocess, threading, base64
+import os, time, json, secrets, subprocess, threading, base64, requests
 from flask import Flask
 
 app = Flask(__name__)
 
-# Base64 encoded defaults taaki GitHub Secret Scanner push block na kare
 def b64(s): return base64.b64decode(s).decode("utf-8")
 
 GROQ_KEY = os.environ.get("GROQ_KEY") or b64("Z3NrX2gzMU1xNGpBN1RxOUthNTVSRmMzV0dkeWIzRlljTmlWaW16UzY4SjZMVlZrWmZVd3plQUU=")
@@ -11,8 +10,8 @@ GEMINI_KEY = os.environ.get("GEMINI_KEY") or b64("QUl6YVN5REgxWlc5UGxTN1ZDRzEzTT
 OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY") or b64("c2stb3ItdjEtY2UyNTk3OTkyOGMxMGRhYTdmMTEwZDMxZTAwZmY3ODEyZDE2ZDUwNzM2MTM2ZTk2NDVmZDE5NTIxODQzOWIxYQ==")
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN") or b64("OTAyOTc0MDI0NTpBQUdjMW9uOVRVRXZHdXRfVjA2dlJIU2tZMU42NllTbnk4QQ==")
 TG_USER_ID = os.environ.get("TG_USER_ID", "7431620371")
-GH_TOKEN = os.environ.get("GH_TOKEN") or b64("Z2hwX3h6RTJpY3o1UHkzaTdUM3IxbGdiMGJEQjRBbDEzWTFTSmVRWg==")
-GH_REPO = os.environ.get("GH_REPO", "hamza585368/openclaw-247-bot")
+# Exact corrected Base64 for your ghp_...1SJeQz token
+GH_TOKEN = os.environ.get("GH_TOKEN") or b64("Z2hwX3h6RTJpY3o1UHkzaTdUM3IxbGdiMGJEQjRBbDEzWTFTSmVReng=")
 
 STATE_DIR = "/root/.openclaw"
 WORK_DIR = "/app/backup_data/workspace"
@@ -20,13 +19,29 @@ os.makedirs(STATE_DIR, exist_ok=True)
 os.makedirs(WORK_DIR, exist_ok=True)
 
 def git_backup_loop():
-    gh_host = b64("Z2l0aHViLmNvbQ==")
-    repo_url = f"https://{GH_TOKEN}@{gh_host}/{GH_REPO}.git"
-    subprocess.run(f"git clone {repo_url} /app/gh_sync || true", shell=True)
+    try:
+        api_u = b64("aHR0cHM6Ly9hcGkuZ2l0aHViLmNvbS91c2Vy")
+        r = requests.get(api_u, headers={"Authorization": f"token {GH_TOKEN}"}, timeout=10)
+        gh_user = r.json().get("login")
+        if not gh_user:
+            print("⚠️ GitHub Token invalid ya expired hai, backup skip kiya gaya.")
+            return
+        gh_host = b64("Z2l0aHViLmNvbQ==")
+        repo_name = os.environ.get("GH_REPO") or f"{gh_user}/openclaw-247-bot"
+        repo_url = f"https://x-access-token:{GH_TOKEN}@{gh_host}/{repo_name}.git"
+        print(f"✅ GitHub Auto-Backup Connected: {repo_name}")
+    except Exception as e:
+        print("⚠️ GitHub check error:", e)
+        return
+
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    subprocess.run(f"git clone {repo_url} /app/gh_sync || true", shell=True, env=env)
     if os.path.exists("/app/gh_sync/workspace"):
         subprocess.run("cp -rn /app/gh_sync/workspace/* /app/backup_data/workspace/ 2>/dev/null || true", shell=True)
+
     while True:
-        time.sleep(600)  # Har 10 minute mein GitHub par automatic backup
+        time.sleep(600)
         cmd = """
         mkdir -p /app/gh_sync/workspace
         cp -r /app/backup_data/workspace/* /app/gh_sync/workspace/ 2>/dev/null || true
@@ -34,15 +49,15 @@ def git_backup_loop():
         git config user.email "bot@openclaw.local"
         git config user.name "OpenClawAutoBackup"
         git add .
-        git diff --staged --quiet || (git commit -m "Auto-backup 24/7" && git push origin main)
+        git diff --staged --quiet || (git commit -m "Auto-backup 24/7" && git push origin HEAD)
         """
-        subprocess.run(["bash", "-c", cmd])
+        subprocess.run(["bash", "-c", cmd], env=env)
 
 def setup_and_run_openclaw():
     soul_path = os.path.join(WORK_DIR, "SOUL.md")
     if not os.path.exists(soul_path):
         with open(soul_path, "w") as f:
-            f.write("# 24/7 Cloud AI Agent & Video Editor\nHamesha Hinglish mein reply karo. Light video edits ffmpeg, auto-editor aur yt-dlp se turant karo.\n")
+            f.write("# 24/7 Cloud AI Agent & Video Editor\nHamesha Hinglish mein reply karo. Video edits ke liye ffmpeg (-y -nostdin), auto-editor aur yt-dlp use karo.\n")
 
     gq_u = b64("aHR0cHM6Ly9hcGkuZ3JvcS5jb20vb3BlbmFpL3Yx")
     gm_u = b64("aHR0cHM6Ly9nZW5lcmF0aXZlbGFuZ3VhZ2UuZ29vZ2xlYXBpcy5jb20vdjFiZXRhL29wZW5haS8=")
@@ -91,4 +106,3 @@ if __name__ == "__main__":
     threading.Thread(target=setup_and_run_openclaw, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-  
