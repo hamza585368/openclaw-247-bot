@@ -10,11 +10,11 @@ GEMINI_KEY = os.environ.get("GEMINI_KEY") or b64("QUl6YVN5REgxWlc5UGxTN1ZDRzEzTT
 OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY") or b64("c2stb3ItdjEtY2UyNTk3OTkyOGMxMGRhYTdmMTEwZDMxZTAwZmY3ODEyZDE2ZDUwNzM2MTM2ZTk2NDVmZDE5NTIxODQzOWIxYQ==")
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN") or b64("OTAyOTc0MDI0NTpBQUdjMW9uOVRVRXZHdXRfVjA2dlJIU2tZMU42NllTbnk4QQ==")
 TG_USER_ID = os.environ.get("TG_USER_ID", "7431620371")
-# Exact corrected Base64 for your ghp_...1SJeQz token
 GH_TOKEN = os.environ.get("GH_TOKEN") or b64("Z2hwX3h6RTJpY3o1UHkzaTdUM3IxbGdiMGJEQjRBbDEzWTFTSmVReng=")
 
 STATE_DIR = "/root/.openclaw"
 WORK_DIR = "/app/backup_data/workspace"
+LOG_FILE = "/tmp/openclaw_render.log"
 os.makedirs(STATE_DIR, exist_ok=True)
 os.makedirs(WORK_DIR, exist_ok=True)
 
@@ -24,14 +24,11 @@ def git_backup_loop():
         r = requests.get(api_u, headers={"Authorization": f"token {GH_TOKEN}"}, timeout=10)
         gh_user = r.json().get("login")
         if not gh_user:
-            print("⚠️ GitHub Token invalid ya expired hai, backup skip kiya gaya.")
             return
         gh_host = b64("Z2l0aHViLmNvbQ==")
         repo_name = os.environ.get("GH_REPO") or f"{gh_user}/openclaw-247-bot"
         repo_url = f"https://x-access-token:{GH_TOKEN}@{gh_host}/{repo_name}.git"
-        print(f"✅ GitHub Auto-Backup Connected: {repo_name}")
-    except Exception as e:
-        print("⚠️ GitHub check error:", e)
+    except Exception:
         return
 
     env = os.environ.copy()
@@ -54,10 +51,17 @@ def git_backup_loop():
         subprocess.run(["bash", "-c", cmd], env=env)
 
 def setup_and_run_openclaw():
+    # Purana Telegram queue clear karein taaki bot turant fresh reply de
+    try:
+        tg_u = b64("aHR0cHM6Ly9hcGkudGVsZWdyYW0ub3JnL2JvdA==") + TG_BOT_TOKEN + "/deleteWebhook?drop_pending_updates=true"
+        requests.get(tg_u, timeout=10)
+    except Exception:
+        pass
+
     soul_path = os.path.join(WORK_DIR, "SOUL.md")
     if not os.path.exists(soul_path):
         with open(soul_path, "w") as f:
-            f.write("# 24/7 Cloud AI Agent & Video Editor\nHamesha Hinglish mein reply karo. Video edits ke liye ffmpeg (-y -nostdin), auto-editor aur yt-dlp use karo.\n")
+            f.write("# 24/7 Cloud AI Agent\nHamesha Hinglish mein reply karo. Light edits ke liye ffmpeg (-y -nostdin) use karo.\n")
 
     gq_u = b64("aHR0cHM6Ly9hcGkuZ3JvcS5jb20vb3BlbmFpL3Yx")
     gm_u = b64("aHR0cHM6Ly9nZW5lcmF0aXZlbGFuZ3VhZ2UuZ29vZ2xlYXBpcy5jb20vdjFiZXRhL29wZW5haS8=")
@@ -94,12 +98,28 @@ def setup_and_run_openclaw():
 
     subprocess.run(["openclaw", "doctor", "--fix"], env=env, input="y\ny\n", text=True, capture_output=True)
     while True:
-        subprocess.run(["openclaw", "gateway", "run", "--port", "18789", "--verbose"], env=env)
+        with open(LOG_FILE, "a") as lf:
+            proc = subprocess.Popen(["openclaw", "gateway", "run", "--port", "18789", "--verbose"], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            for line in proc.stdout:
+                print(line, end="", flush=True)
+                lf.write(line)
+                lf.flush()
+            proc.wait()
         time.sleep(5)
 
 @app.route("/")
 def home():
-    return "✅ OpenClaw 24/7 Server + GitHub Auto-Backup is ALIVE!", 200
+    ps = subprocess.run("ps aux | grep 'openclaw' | grep -v grep", shell=True, capture_output=True, text=True).stdout.strip()
+    status = "RUNNING ✅" if ps else "RESTARTING ⏳"
+    return f"OpenClaw 24/7 Server: {status} | Check /logs for live output", 200
+
+@app.route("/logs")
+def view_logs():
+    if not os.path.exists(LOG_FILE):
+        return "Starting OpenClaw... Refresh in 10 seconds.", 200
+    with open(LOG_FILE) as f:
+        lines = f.readlines()[-60:]
+    return "<pre>" + "".join(lines) + "</pre>", 200
 
 if __name__ == "__main__":
     threading.Thread(target=git_backup_loop, daemon=True).start()
