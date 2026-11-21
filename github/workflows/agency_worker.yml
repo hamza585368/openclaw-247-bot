@@ -1,0 +1,55 @@
+name: 16GB AI Agency Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_type:
+        description: 'Task Type (leads, web, idea)'
+        required: true
+        default: 'leads'
+      task_input:
+        description: 'Search Query or Niche'
+        required: true
+        default: 'Roofers in Houston TX'
+      chat_id:
+        description: 'Telegram Chat ID'
+        required: true
+
+jobs:
+  execute-agency-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Free Up 70GB+ Storage & Check 16GB RAM
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          free -h
+          df -h /
+
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install CrewAI & Playwright
+        run: |
+          pip install -q -r requirements_worker.txt
+          playwright install --with-deps chromium >/dev/null 2>&1
+
+      - name: Run 16GB AI Worker
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          GROQ_KEY: ${{ secrets.GROQ_KEY }}
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID }}
+          TASK_TYPE: ${{ inputs.task_type }}
+          TASK_INPUT: ${{ inputs.task_input }}
+          CHAT_ID: ${{ inputs.chat_id }}
+        run: |
+          python3 worker_agent.py
+          
