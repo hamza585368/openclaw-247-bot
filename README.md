@@ -1,17 +1,17 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/hamza-evolution/hamza-evolution/main/assets/cyber_hud.svg" width="100%" />
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=20&duration=1800&pause=400&color=00FF9C&center=true&vCenter=true&width=760&lines=%3E_+NODE+%3A%3A+OPENCLAW-247-BOT+%5BONLINE%5D;%3E_+ENGINE+%3A%3A+PYTHON+AUTONOMOUS+RUNTIME;%3E_+SECURITY+%26+INTEGRITY+VERIFIED" />
-  <img src="https://raw.githubusercontent.com/hamza-evolution/hamza-evolution/main/assets/matrix_pulse.svg" width="100%" />
+  <img src="./assets/node_hud.svg" width="100%" />
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=20&duration=1600&pause=300&color=00FF41&center=true&vCenter=true&width=780&lines=%3E_+EXECUTING+NODE+%3A%3A+OPENCLAW-247-BOT;%3E_+KERNEL+STACK+%3A%3A+PYTHON+ENCRYPTED+PIPELINE;%3E_+STATUS+%3A%3A+100%25+AUTONOMOUS+OPERATION" />
+  <img src="./assets/node_pulse.svg" width="100%" />
 </div>
 
-### `>_` MODULE SPECIFICATION
 ```diff
-+ Node Name   : openclaw-247-bot
-+ Runtime     : PYTHON
-+ Maintainer  : hamza-evolution
-+ Summary     : High-speed autonomous execution node.
++ [NODE TELEMETRY] :: OPENCLAW-247-BOT
++ Architecture     :: Encrypted Autonomous Execution Daemon
++ Primary Kernel   :: PYTHON
++ Root Operator    :: hamza-evolution
+! Security Status  :: HARDENED & VERIFIED
 ```
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/hamza-evolution/hamza-evolution/main/assets/matrix_pulse.svg" width="100%" />
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:03070B,50:00FF41,100:00E5FF&height=115&section=footer" width="100%" />
 </div>
