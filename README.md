@@ -1,24 +1,17 @@
 <div align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0D1117,50:7F52FF,100:00FF9C&height=170&section=header&text=OPENCLAW-247-BOT&fontColor=FFFFFF&fontSize=32&animation=twinkling&fontAlignY=40" width="100%" />
-  <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=600&size=19&duration=2200&pause=500&color=00FF9C&center=true&vCenter=true&width=700&lines=MODULE%3A+OPENCLAW-247-BOT+%5BACTIVE%5D;STACK%3A+PYTHON+%7C+ARCHITECT%3A+HAMZA-EVOLUTION;HIGH-SPEED+AUTONOMOUS+EXECUTION+PIPELINE" />
+  <img src="https://raw.githubusercontent.com/hamza-evolution/hamza-evolution/main/assets/cyber_hud.svg" width="100%" />
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=20&duration=1800&pause=400&color=00FF9C&center=true&vCenter=true&width=760&lines=%3E_+NODE+%3A%3A+OPENCLAW-247-BOT+%5BONLINE%5D;%3E_+ENGINE+%3A%3A+PYTHON+AUTONOMOUS+RUNTIME;%3E_+SECURITY+%26+INTEGRITY+VERIFIED" />
+  <img src="https://raw.githubusercontent.com/hamza-evolution/hamza-evolution/main/assets/matrix_pulse.svg" width="100%" />
 </div>
 
-<img src="https://capsule-render.vercel.app/api?type=rect&color=0:0D1117,50:00FF9C,100:0D1117&height=3" width="100%" />
-
-### `>_` Module Overview
-Autonomous Cloud & AI Execution Module
-
-### `>_` Live File Tree
-```text
-openclaw-247-bot/
-├── github
-├── render_bot.py
-├── requirements_render.txt
-├── requirements_worker.txt
-├── worker_agent.py
-└── README.md
+### `>_` MODULE SPECIFICATION
+```diff
++ Node Name   : openclaw-247-bot
++ Runtime     : PYTHON
++ Maintainer  : hamza-evolution
++ Summary     : High-speed autonomous execution node.
 ```
 
 <div align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:7F52FF,50:00FF9C,100:0D1117&height=120&section=footer" width="100%" />
+  <img src="https://raw.githubusercontent.com/hamza-evolution/hamza-evolution/main/assets/matrix_pulse.svg" width="100%" />
 </div>
